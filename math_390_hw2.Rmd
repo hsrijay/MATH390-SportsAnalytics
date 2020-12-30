@@ -1,0 +1,239 @@
+---
+title: "MATH390: Homework 3 - 2020 Week 1 NFL Football"
+author: "Harshavardhan Srijay"
+date: "10/13/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+library(tidyverse)
+```
+
+# Import Data
+```{r}
+data <- read.csv(file = "nfl2020-week1.csv")
+#Fix the actor in this play
+data$actors[1586] = "Ryan Fitzpatrick"
+```
+
+I added a column to the original data on Excel called "EP_DIFF", which is the expected points after minus expected points before, for each play (EPA-EPB). I used this as an approximate measure of the expected points added by a given actor in a play.
+
+```{r}
+glimpse(data)
+```
+
+# Yards Per Play
+```{r, fig.width = 10}
+#summarise yards per play for each team
+ypp <- data %>%
+  filter(actions == "pass" | actions == "run" | actions == "sack") %>%
+  mutate(dist = ifelse(is.na(distance), 0, distance)) %>%
+  group_by(possessionStart) %>%
+  summarise(mean = mean(dist))
+
+#plot
+ggplot(data = ypp, mapping = aes(x = reorder(possessionStart, mean), y = mean)) +
+  geom_point(size = 3) +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Average Yards Per Play for Each NFL Team", y = "Mean Yards Per Play", subtitle = "Week 1 - 2020 NFL Season") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5),axis.title.y = element_blank())
+```
+
+# Identify Positions
+
+### Identify QBs
+```{r}
+qbs <- c()
+for(i in 1:2788){
+  if(data$actions[i] == "pass"){
+    qbs <- c(qbs, data$actors[i])
+  }
+}
+qbs <- unique(qbs)
+```
+### mutate position columns
+```{r}
+data <- data %>%
+  mutate(qb = ifelse(actors %in% qbs, "QB", "non-QB")) %>%
+  mutate(rb = ifelse(!(actors %in% qbs) & (actions == "run"), "RB", "non-RB" )) %>%
+  mutate(wr = ifelse(is.na(receiver) | receiver == "UNKNOWN", "non-WR", "WR"))
+
+#make columns factors
+data$qb = as.factor(data$qb)
+data$rb = as.factor(data$rb)
+data$wr = as.factor(data$wr)
+```
+
+## Expected Points Added by Quarterbacks
+```{r, fig.width = 10}
+qbs <- data[data$qb == "QB",]
+qbs$actors = as.factor(qbs$actors)
+qbs$EP_DIFF = as.numeric(qbs$EP_DIFF)
+
+#filter out qbs with less than 7 plays, to remove noise
+high_freq <-  as.data.frame(table(qbs$actors)) %>%
+  filter(Freq >= 7)
+#summarise qb epa
+top_qbs <- qbs %>%
+  filter(qbs$actors %in% high_freq$Var1) %>%
+  group_by(actors) %>%
+  summarise(epa = mean(EP_DIFF), var = sd(EP_DIFF)) %>%
+  arrange(desc(epa)) 
+#plot
+ggplot(data = top_qbs, mapping = aes(x = reorder(actors, epa), y = epa)) +
+  geom_point(aes(size = var)) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y = "Mean Expected Points Added Per Posession", title = "Mean Expected Points Added per Play by Quarterbacks", subtitle = "Week 1 - 2020 NFL Season", size = "Standard Deviation") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5),axis.title.y = element_blank())
+```
+
+## Expected Points Added by Runningbacks
+```{r, fig.width = 10}
+rbs <- data[data$rb == "RB",]
+rbs$actors = as.factor(rbs$actors)
+rbs$EP_DIFF = as.numeric(rbs$EP_DIFF)
+
+#filter out rbs with less than 7 plays, to remove noise
+high_freq <-  as.data.frame(table(rbs$actors)) %>%
+  filter(Freq >= 7)
+#summarise rb epa
+top_rbs <- rbs %>%
+  filter(rbs$actors %in% high_freq$Var1) %>%
+  group_by(actors) %>%
+  summarise(epa = mean(EP_DIFF), var = sd(EP_DIFF)) %>%
+  arrange(desc(epa)) %>%
+  slice(1:30)
+#plot
+ggplot(data = top_rbs, mapping = aes(x = reorder(actors, epa), y = epa)) +
+  geom_point(aes(size = var)) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y = "Mean Expected Points Added Per Posession", title = "Mean Expected Points Added per Play by Runningbacks", subtitle = "Week 1 - 2020 NFL Season", size = "Standard Deviation") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5),axis.title.y = element_blank())
+```
+
+## Expected Points Added by Receivers
+```{r, fig.width = 10}
+wr <- data[data$wr == "WR",]
+wr$receiver = as.factor(wr$receiver)
+wr$EP_DIFF = as.numeric(wr$EP_DIFF)
+
+#filter out receivers with less than 7 plays, to remove noise
+high_freq <-  as.data.frame(table(wr$receiver)) %>%
+  filter(Freq >= 7)
+#summarise receiver epa
+top_wr <- wr %>%
+  filter(receiver %in% high_freq$Var1) %>%
+  group_by(receiver) %>%
+  summarise(epa = mean(EP_DIFF), var = sd(EP_DIFF)) %>%
+  arrange(desc(epa)) %>%
+  slice(1:30)
+#plot
+ggplot(data = top_wr, mapping = aes(x = reorder(receiver, epa), y = epa)) +
+  geom_point(aes(size = var)) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y = "Mean Expected Points Added Per Posession", title = "Mean Expected Points Added per Play by Receivers (WR and TE)", subtitle = "Week 1 - 2020 NFL Season", size = "Standard Deviation") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5),axis.title.y = element_blank())
+```
+
+## Third Down Conversion Rate
+```{r, fig.width = 10}
+data$possessionStart = as.factor(data$possessionStart)
+third_down <- data %>%
+  select(possessionStart, down, togo) 
+third_down <- third_down[complete.cases(third_down),]
+
+#identify all plays at third down, and plays at third down that had successful conversions
+conversion <- array(0,dim=c(2411,1))
+attempt <- array(0,dim=c(2411,1))
+
+for (i in 1:2411){
+  if(third_down$down[i] == 3 && third_down$possessionStart[i+1] == third_down$possessionStart[i]){
+    attempt[i] = 1
+  }
+  if(third_down$down[i] == 3 && third_down$down[i+1] == 1 && third_down$possessionStart[i] == third_down$possessionStart[i+1]){
+    conversion[i] = 1
+  }
+}
+#summarise third down stats
+third_down <- third_down %>%
+  mutate(attempt = attempt) %>%
+  mutate(conversion = conversion) %>%
+  group_by(possessionStart) %>%
+  summarise(total_conversion = sum(conversion), total_attempts = sum(attempt)) %>%
+  mutate(conversion_rate = total_conversion/total_attempts)
+#plot
+ggplot(data = third_down, mapping = aes(x = reorder(possessionStart, conversion_rate), y = conversion_rate)) +
+  geom_point(aes(size = total_attempts)) +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Third Down Conversion Rate for NFL Teams", y = "Third Down Conversion Rate", subtitle = "Week 1 - 2020 NFL Season", size = "Total Attempts") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5),axis.title.y = element_blank()) +
+  scale_y_continuous(labels = scales::percent)
+
+```
+
+## Field Goal Conversion Rate
+```{r, fig.width = 10, warning=F}
+data$actions = as.factor(data$actions)
+#filter out non-FG plays
+field_goal <- data %>%
+  filter(actions == "FG") %>%
+  select(possessionStart, actors, success, distance)
+#summarise field goal attemps and conversions
+field_goal$success = as.factor(field_goal$success)
+field_goal <- field_goal %>%
+  mutate(succ = ifelse(success == TRUE, 1, 0))
+field_goal <- field_goal %>%
+  group_by(possessionStart) %>%
+  summarise(attempts = n(), success = sum(succ), dist = mean(distance)) %>%
+  mutate(rate = success/attempts)
+#plot
+ggplot(data = field_goal, mapping = aes(x = reorder(possessionStart, rate), y = rate)) +
+  geom_bar(stat = "identity", aes(fill = dist)) +
+  scale_fill_gradient(low = "black",high = "dodgerblue")+
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Field Goal Conversion Rate for NFL Teams", y = "Field Goal Conversion Rate", subtitle = "Week 1 - 2020 NFL Season", fill = "Average FG Distance (yd)") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5),axis.title.y = element_blank()) +
+  scale_y_continuous(labels = scales::percent)
+```
+
+## Passer Rating
+```{r, fig.width = 10}
+qbs$down <- as.factor(qbs$down)
+#gather statistics to calculate passer rating
+qbr <- qbs %>%
+  filter(actions == "pass") %>%
+  select(actors, success, interception, distance, score) %>%
+  group_by(actors) %>%
+  mutate(succ = ifelse(success == FALSE, 0, 1)) %>%
+  mutate(int = ifelse(interception == FALSE | is.na(interception), 0, 1)) %>%
+  mutate(dist = ifelse(is.na(distance), 0, distance)) %>%
+  mutate(touch = ifelse(score == 6, 1, 0)) %>%
+  summarise(attempts = n(), completions = sum(succ), passing_yards = sum(dist), interceptions = sum(int), touchdowns = sum(touch)) %>%
+  filter(attempts > 10)
+#calculate passer rating
+qbr <- qbr %>%
+  mutate(a = ((completions/attempts) - 0.3) * 5) %>%
+  mutate(b = ((passing_yards/attempts) - 3) * 0.25) %>%
+  mutate(c = (touchdowns/attempts) * 20) %>%
+  mutate(d = 2.375 - ((interceptions/attempts) * 25))
+qbr <- qbr %>% mutate(passer_rating = 100*((a+b+c+d)/6))
+#plot
+ggplot(data = qbr, mapping = aes(x = reorder(actors, passer_rating), y = passer_rating)) +
+  geom_point(size = 3) +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Passer Rating for NFL Quarterbacks", y = "Passer Rating", subtitle = "Week 1 - 2020 NFL Season") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5),axis.title.y = element_blank())
+```
+
+Clearly, some of the results displayed here are outcomes of noise, as all the data is only from the first week of NFL games. For instance, Gardner Minshew had a passer rating of almost 160, and Derrick Henry's expected points added was negative. Additionally, there was not much variation in the field goal conversion rates, as many teams had 100% conversion rates, since the sample sizes were so small. However, with the addition of play data from more games, the effect of random noise on the observed patterns should decrease, and the results should be more realistic.
+
+## References
+I obtained the formula for passer rating from Wikipedia: https://en.wikipedia.org/wiki/Passer_rating
